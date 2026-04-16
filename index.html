@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <title>Focus System AI Pro</title>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.18.0"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.2"></script>
+  
+  <style>
+    :root { --primary: #4CAF50; --high: #ff4757; --medium: #ffa502; --low: #2ed573; }
+    body { font-family: 'Segoe UI', sans-serif; max-width: 520px; margin: auto; background: #f0f2f5; padding: 20px; }
+    .card { background: white; padding: 20px; margin-bottom: 15px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
+    h1 { color: #2f3542; margin-bottom: 20px; text-align: center; }
+    
+    /* ระบบ AI Display */
+    #ai-status { font-size: 14px; text-align: center; padding: 10px; border-radius: 8px; margin-bottom: 10px; font-weight: bold; }
+    .status-loading { background: #ffeaa7; color: #d63031; }
+    .status-ready { background: #55efc4; color: #00b894; }
+    #video-container { width: 100%; border-radius: 12px; overflow: hidden; display: none; margin-bottom: 10px; border: 3px solid var(--primary); }
+    #webcam { width: 100%; height: auto; transform: scaleX(-1); }
+
+    input, select { width: 100%; padding: 10px; margin: 8px 0; border: 1px solid #ddd; border-radius: 8px; box-sizing: border-box; }
+    button { padding: 12px; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; width: 100%; transition: 0.3s; }
+    .btn-add { background: var(--primary); color: white; }
+    .btn-start { background: #1e90ff; color: white; margin-top: 10px; }
+    .btn-complete { background: var(--low); color: white; margin-top: 10px; }
+    .delete-btn { background: var(--high); color: white; width: auto; padding: 5px 10px; font-size: 12px; }
+    button:disabled { background: #ccc; cursor: not-allowed; }
+
+    #countdown { font-size: 48px; text-align: center; font-weight: bold; color: #2f3542; margin: 10px 0; }
+    #currentTask { text-align: center; font-size: 20px; color: #1e90ff; font-weight: bold; }
+    ul { list-style: none; padding: 0; }
+    li { background: #fff; border-left: 5px solid #ccc; padding: 12px; margin: 8px 0; border-radius: 4px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+    .done { opacity: 0.6; text-decoration: line-through; }
+  </style>
+</head>
+<body>
+
+<h1>🎯 Focus System AI</h1>
+
+<div id="ai-status" class="status-loading">⏳ กำลังโหลดสมอง AI... (หากนานเกินไปโปรดเช็กอินเทอร์เน็ต)</div>
+
+<div class="card">
+  <input id="taskInput" placeholder="จะทำอะไรดี? (เช่น อ่านหนังสือ)" />
+  <input id="durationInput" type="number" placeholder="เวลากี่นาที?" min="1" />
+  <select id="priorityInput">
+    <option value="1">🔥 High Priority</option>
+    <option value="2">⚡ Medium Priority</option>
+    <option value="3">🌱 Low Priority</option>
+  </select>
+  <button class="btn-add" onclick="addTask()">➕ เพิ่มงาน</button>
+</div>
+
+<div id="video-container" class="card">
+  <div style="text-align:center; font-size: 14px; margin-bottom: 5px; color: #666;">[ AI Mode: กำลังตรวจจับหนังสือ ]</div>
+  <video id="webcam" autoplay playsinline></video>
+</div>
+
+<div class="card">
+  <h2>⚡ กำลังโฟกัส</h2>
+  <div id="currentTask">ยังไม่มีงานที่เลือก</div>
+  <div id="countdown">00:00</div>
+  <button id="startBtn" class="btn-start" onclick="checkAIAndStart()">🚀 สแกนหนังสือเพื่อเริ่ม</button>
+</div>
+
+<div class="card">
+  <h2>📋 รายการงาน</h2>
+  <ul id="taskList"></ul>
+  <button id="completeBtn" class="btn-complete" onclick="checkAIAndComplete()" disabled>✅ สแกนหนังสือเพื่อจบงาน</button>
+</div>
+
+<script>
+let tasks = JSON.parse(localStorage.getItem("tasks")) || [];
+let model = null;
+let currentTaskIndex = null;
+let countdownInterval = null;
+let remainingTime = 0;
+let isScanning = false;
+
+const alarmSound = new Audio('https://actions.google.com/sounds/v1/alarms/beep_short.ogg');
+alarmSound.loop = true;
+
+// 1. โหลดโมเดล AI ทันทีที่เปิดหน้าเว็บ
+async function loadAI() {
+  const statusDiv = document.getElementById('ai-status');
+  try {
+    model = await cocossd.load();
+    statusDiv.innerText = "✅ AI พร้อมทำงานแล้ว! (ตรวจจับ: Book)";
+    statusDiv.className = "status-ready";
+  } catch (e) {
+    statusDiv.innerText = "❌ โหลด AI ไม่สำเร็จ: กรุณารันผ่าน Server หรือ HTTPS";
+    console.error(e);
+  }
+}
+loadAI();
+
+// 2. ฟังก์ชันตรวจสอบวัตถุด้วย AI (ใช้หนังสือเป็นหลัก)
+async function scanForObject(targetLabel) {
+  const video = document.getElementById('webcam');
+  const container = document.getElementById('video-container');
+  
+  // เปิดกล้อง
+  container.style.display = "block";
+  const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+  video.srcObject = stream;
+
+  return new Promise((resolve) => {
+    const checkFrame = async () => {
+      if (!isScanning) return;
+      const predictions = await model.detect(video);
+      
+      // ค้นหา 'book' ในสิ่งที่มีความมั่นใจ > 50%
+      const found = predictions.find(p => p.class === 'book' && p.score > 0.5);
+      
+      if (found) {
+        isScanning = false;
+        video.srcObject.getTracks().forEach(track => track.stop()); // ปิดกล้อง
+        container.style.display = "none";
+        resolve(true);
+      } else {
+        requestAnimationFrame(checkFrame);
+      }
+    };
+    isScanning = true;
+    checkFrame();
+  });
+}
+
+async function checkAIAndStart() {
+  if (!model) return alert("AI ยังโหลดไม่สำเร็จครับ");
+  
+  const pending = tasks.filter(t => t.status === "pending");
+  if (pending.length === 0) return alert("ไม่มีงานค้างครับ");
+
+  alert("กรุณาโชว์ 'หนังสือ' ต่อหน้ากล้องเพื่อเริ่มงาน");
+  const success = await scanForObject("book");
+  if (success) startTask();
+}
+
+async function checkAIAndComplete() {
+  alert("สแกน 'หนังสือ' อีกครั้งเพื่อยืนยันว่าทำเสร็จจริง");
+  const success = await scanForObject("book");
+  if (success) completeTask();
+}
+
+// --- โค้ดระบบ Task เดิมของคุณ (ปรับแต่งเล็กน้อย) ---
+
+function renderTasks() {
+  const list = document.getElementById("taskList");
+  list.innerHTML = "";
+  tasks.sort((a,b) => a.priority - b.priority);
+  tasks.forEach((task, index) => {
+    const li = document.createElement("li");
+    li.className = task.status === 'done' ? 'done' : '';
+    li.innerHTML = `<span><strong>${task.title}</strong> (${task.duration}m)</span>
+                    <button class="delete-btn" onclick="deleteTask(${index})">🗑️</button>`;
+    list.appendChild(li);
+  });
+}
+
+function addTask() {
+  const title = document.getElementById("taskInput").value;
+  const duration = document.getElementById("durationInput").value;
+  if (!title || duration <= 0) return;
+  tasks.push({ title, duration: parseInt(duration), priority: parseInt(document.getElementById("priorityInput").value), status: "pending" });
+  localStorage.setItem("tasks", JSON.stringify(tasks));
+  renderTasks();
+}
+
+function deleteTask(index) {
+  tasks.splice(index, 1);
+  localStorage.setItem("tasks", JSON.stringify(tasks));
+  renderTasks();
+}
+
+function startTask() {
+  const index = tasks.findIndex(t => t.status === "pending");
+  currentTaskIndex = index;
+  tasks[index].status = "doing";
+  document.getElementById("currentTask").innerText = "🔥 กำลังทำ: " + tasks[index].title;
+  document.getElementById("startBtn").disabled = true;
+  document.getElementById("completeBtn").disabled = false;
+  remainingTime = tasks[index].duration * 60;
+  
+  clearInterval(countdownInterval);
+  countdownInterval = setInterval(() => {
+    if
