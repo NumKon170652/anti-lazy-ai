@@ -2,186 +2,268 @@
 <html lang="th">
 <head>
   <meta charset="UTF-8">
-  <title>Focus System AI Pro</title>
+  <title>Focus System AI - Object Detect</title>
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.18.0"></script>
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.2"></script>
   
   <style>
-    :root { --primary: #4CAF50; --high: #ff4757; --medium: #ffa502; --low: #2ed573; }
-    body { font-family: 'Segoe UI', sans-serif; max-width: 520px; margin: auto; background: #f0f2f5; padding: 20px; }
-    .card { background: white; padding: 20px; margin-bottom: 15px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
-    h1 { color: #2f3542; margin-bottom: 20px; text-align: center; }
+    :root { --primary: #4CAF50; --high: #ff4757; --medium: #ffa502; --low: #2ed573; --blue: #1e90ff;}
+    body { font-family: 'Segoe UI', sans-serif; max-width: 550px; margin: auto; background: #f0f2f5; padding: 20px; }
+    .card { background: white; padding: 20px; margin-bottom: 15px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+    h1 { text-align: center; color: #2f3542; margin-bottom: 20px;}
     
     /* ระบบ AI Display */
-    #ai-status { font-size: 14px; text-align: center; padding: 10px; border-radius: 8px; margin-bottom: 10px; font-weight: bold; }
-    .status-loading { background: #ffeaa7; color: #d63031; }
-    .status-ready { background: #55efc4; color: #00b894; }
-    #video-container { width: 100%; border-radius: 12px; overflow: hidden; display: none; margin-bottom: 10px; border: 3px solid var(--primary); }
+    #ai-status { font-size: 16px; text-align: center; padding: 15px; border-radius: 8px; margin-bottom: 10px; font-weight: bold; }
+    .status-loading { background: #ffeaa7; color: #d63031; } /* สีเหลือง = กำลังรอ */
+    .status-ready { background: #55efc4; color: #00b894; } /* สีเขียว = พร้อม! */
+    .status-error { background: #ff7675; color: white; }
+    
+    #video-container { width: 100%; border-radius: 12px; overflow: hidden; display: none; margin: 10px 0; border: 4px solid var(--blue); position: relative; }
     #webcam { width: 100%; height: auto; transform: scaleX(-1); }
+    .ai-badge { position: absolute; top: 10px; left: 10px; background: rgba(0,0,0,0.7); color: white; padding: 8px 12px; border-radius: 20px; font-weight: bold; font-size: 14px; z-index: 10; }
 
-    input, select { width: 100%; padding: 10px; margin: 8px 0; border: 1px solid #ddd; border-radius: 8px; box-sizing: border-box; }
-    button { padding: 12px; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; width: 100%; transition: 0.3s; }
-    .btn-add { background: var(--primary); color: white; }
-    .btn-start { background: #1e90ff; color: white; margin-top: 10px; }
-    .btn-complete { background: var(--low); color: white; margin-top: 10px; }
-    .delete-btn { background: var(--high); color: white; width: auto; padding: 5px 10px; font-size: 12px; }
-    button:disabled { background: #ccc; cursor: not-allowed; }
+    input, select { width: 100%; padding: 12px; margin: 8px 0; border: 1px solid #ddd; border-radius: 8px; box-sizing: border-box; }
+    button { padding: 14px; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; width: 100%; transition: 0.3s; font-size: 16px; margin-top: 5px; color: white;}
+    .btn-add { background: var(--primary); }
+    .btn-action { background: var(--blue); }
+    .delete-btn { background: var(--high); width: auto; padding: 5px 10px; font-size: 11px; }
 
-    #countdown { font-size: 48px; text-align: center; font-weight: bold; color: #2f3542; margin: 10px 0; }
-    #currentTask { text-align: center; font-size: 20px; color: #1e90ff; font-weight: bold; }
+    #countdown { font-size: 60px; text-align: center; font-weight: bold; color: #2f3542; margin: 15px 0; font-family: monospace; }
+    #currentTask { text-align: center; font-size: 18px; color: #1e90ff; font-weight: bold; min-height: 25px; }
     ul { list-style: none; padding: 0; }
-    li { background: #fff; border-left: 5px solid #ccc; padding: 12px; margin: 8px 0; border-radius: 4px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
-    .done { opacity: 0.6; text-decoration: line-through; }
+    li { background: #fff; border-left: 5px solid #ccc; padding: 12px; margin: 8px 0; border-radius: 8px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+    .done { opacity: 0.6; text-decoration: line-through; background: #eee; }
   </style>
 </head>
 <body>
 
-<h1>🎯 Focus System AI</h1>
+<h1>🎯 โฟกัส แมชชีน AI</h1>
 
-<div id="ai-status" class="status-loading">⏳ กำลังโหลดสมอง AI... (หากนานเกินไปโปรดเช็กอินเทอร์เน็ต)</div>
+<div id="ai-status" class="status-loading">⌛ กำลังเชื่อมต่อสมอง AI... (หากนานกว่า 1 นาทีให้ลองเปิดใหม่)</div>
 
 <div class="card">
-  <input id="taskInput" placeholder="จะทำอะไรดี? (เช่น อ่านหนังสือ)" />
-  <input id="durationInput" type="number" placeholder="เวลากี่นาที?" min="1" />
+  <input id="taskInput" placeholder="จะทำอะไร? (เช่น อ่านหนังสือเล่มนี้)" />
+  <input id="durationInput" type="number" placeholder="นาที" min="1" />
   <select id="priorityInput">
-    <option value="1">🔥 High Priority</option>
-    <option value="2">⚡ Medium Priority</option>
-    <option value="3">🌱 Low Priority</option>
+    <option value="1">🔥 สูง (ต้องทำ)</option>
+    <option value="2">⚡ ปานกลาง</option>
+    <option value="3">🌱 ต่ำ (ทำก็ได้)</option>
   </select>
-  <button class="btn-add" onclick="addTask()">➕ เพิ่มงาน</button>
+  <button class="btn-add" onclick="addTask()">➕ เพิ่มงานลงรายการ</button>
+</div>
+
+<div class="card">
+  <div id="currentTask">รอเริ่มงาน...</div>
+  <div id="countdown">00:00</div>
+  <button id="mainBtn" class="btn-action" onclick="handleFocusProcess()">🚀 สแกนหนังสือเพื่อเริ่ม</button>
 </div>
 
 <div id="video-container" class="card">
-  <div style="text-align:center; font-size: 14px; margin-bottom: 5px; color: #666;">[ AI Mode: กำลังตรวจจับหนังสือ ]</div>
+  <div class="ai-badge" id="detection-info">กำลังมองหา...</div>
   <video id="webcam" autoplay playsinline></video>
 </div>
 
 <div class="card">
-  <h2>⚡ กำลังโฟกัส</h2>
-  <div id="currentTask">ยังไม่มีงานที่เลือก</div>
-  <div id="countdown">00:00</div>
-  <button id="startBtn" class="btn-start" onclick="checkAIAndStart()">🚀 สแกนหนังสือเพื่อเริ่ม</button>
-</div>
-
-<div class="card">
-  <h2>📋 รายการงาน</h2>
+  <h3>📋 รายการ</h3>
   <ul id="taskList"></ul>
-  <button id="completeBtn" class="btn-complete" onclick="checkAIAndComplete()" disabled>✅ สแกนหนังสือเพื่อจบงาน</button>
 </div>
 
 <script>
-let tasks = JSON.parse(localStorage.getItem("tasks")) || [];
+let tasks = JSON.parse(localStorage.getItem("ai_focus_tasks")) || [];
 let model = null;
 let currentTaskIndex = null;
 let countdownInterval = null;
 let remainingTime = 0;
-let isScanning = false;
+let isWorking = false;
+let isCameraRunning = false;
+let detectedObject = ""; // เก็บชื่อวัตถุที่ AI ตรวจเจอ
 
 const alarmSound = new Audio('https://actions.google.com/sounds/v1/alarms/beep_short.ogg');
 alarmSound.loop = true;
 
-// 1. โหลดโมเดล AI ทันทีที่เปิดหน้าเว็บ
-async function loadAI() {
+// 1. โหลด AI แบบเจาะจงโมเดลที่เบาที่สุด
+async function initAI() {
   const statusDiv = document.getElementById('ai-status');
   try {
-    model = await cocossd.load();
-    statusDiv.innerText = "✅ AI พร้อมทำงานแล้ว! (ตรวจจับ: Book)";
+    model = await cocossd.load({ base: 'lite_mobilenet_v2' }); // โหลดโมเดลขนาดเล็ก เร็วที่สุด
+    statusDiv.innerText = "✅ AI โหลดเสร็จแล้ว! (ตรวจจับ: Book/Laptop/Phone)";
     statusDiv.className = "status-ready";
-  } catch (e) {
-    statusDiv.innerText = "❌ โหลด AI ไม่สำเร็จ: กรุณารันผ่าน Server หรือ HTTPS";
-    console.error(e);
+    statusDiv.style.color = "#00b894";
+  } catch (err) {
+    statusDiv.innerText = "❌ โหลด AI ไม่สำเร็จ: ลองรีเฟรชหรือเช็กเน็ต";
+    statusDiv.className = "status-error";
+    console.error(err);
   }
 }
-loadAI();
+initAI();
 
-// 2. ฟังก์ชันตรวจสอบวัตถุด้วย AI (ใช้หนังสือเป็นหลัก)
-async function scanForObject(targetLabel) {
+// 2. ระบบกล้อง
+async function toggleCamera() {
   const video = document.getElementById('webcam');
   const container = document.getElementById('video-container');
   
-  // เปิดกล้อง
-  container.style.display = "block";
-  const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-  video.srcObject = stream;
-
-  return new Promise((resolve) => {
-    const checkFrame = async () => {
-      if (!isScanning) return;
-      const predictions = await model.detect(video);
-      
-      // ค้นหา 'book' ในสิ่งที่มีความมั่นใจ > 50%
-      const found = predictions.find(p => p.class === 'book' && p.score > 0.5);
-      
-      if (found) {
-        isScanning = false;
-        video.srcObject.getTracks().forEach(track => track.stop()); // ปิดกล้อง
-        container.style.display = "none";
-        resolve(true);
-      } else {
-        requestAnimationFrame(checkFrame);
-      }
-    };
-    isScanning = true;
-    checkFrame();
-  });
+  if (!isCameraRunning) {
+    try {
+      // เปิดกล้องหลัก
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+      video.srcObject = stream;
+      container.style.display = "block";
+      isCameraRunning = true;
+      runDetection();
+    } catch (err) {
+      alert("ไม่สามารถเข้าถึงกล้องได้: " + err);
+    }
+  } else {
+    stopCamera();
+  }
 }
 
-async function checkAIAndStart() {
+function stopCamera() {
+  const video = document.getElementById('webcam');
+  if (video.srcObject) {
+    video.srcObject.getTracks().forEach(t => t.stop());
+  }
+  document.getElementById('video-container').style.display = "none";
+  isCameraRunning = false;
+  detectedObject = ""; // รีเซ็ตค่าวัตถุที่ตรวจเจอ
+}
+
+// 3. AI Detection Loop
+async function runDetection() {
+  if (!isCameraRunning || !model) return;
+  
+  const video = document.getElementById('webcam');
+  const predictions = await model.detect(video);
+  const badge = document.getElementById('detection-info');
+
+  // รายการวัตถุที่ยอมรับให้ผ่าน
+  const validObjects = ["book", "laptop", "cell phone", "tablet", "cup"];
+  
+  // ปรับ Threshold ลงเหลือ 0.3 (30%) เพื่อให้เจอง่ายขึ้น
+  const found = predictions.find(p => validObjects.includes(p.class) && p.score > 0.3);
+
+  if (found) {
+    detectedObject = found.class; // บันทึกชื่อวัตถุที่ตรวจเจอ
+    badge.innerText = `เจอ ${detectedObject} (${Math.round(found.score*100)}%)`;
+    badge.style.color = "#00ff00";
+    
+    // Auto-Verify ถ้าเจอวัตถุ
+    if (!isWorking && detectedObject) {
+        // ... (โค้ดเริ่มจับเวลาจริงด้านล่าง)
+    }
+  } else {
+    detectedObject = ""; // รีเซ็ตถ้าไม่เจอ
+    badge.innerText = "🔍 สแกนหาวัตถุหลัก...";
+    badge.style.color = "white";
+  }
+  
+  // วน Loop ต่อเนื่อง
+  if (isCameraRunning) requestAnimationFrame(runDetection);
+}
+
+// 4. Main Process Logic
+function handleFocusProcess() {
   if (!model) return alert("AI ยังโหลดไม่สำเร็จครับ");
   
-  const pending = tasks.filter(t => t.status === "pending");
-  if (pending.length === 0) return alert("ไม่มีงานค้างครับ");
-
-  alert("กรุณาโชว์ 'หนังสือ' ต่อหน้ากล้องเพื่อเริ่มงาน");
-  const success = await scanForObject("book");
-  if (success) startTask();
+  if (!isWorking) {
+    // โหมดเตรียมเริ่มงาน
+    if (tasks.filter(t => t.status === "pending").length === 0) return alert("ไม่มีงานให้ทำครับ");
+    prepareToStart();
+  } else {
+    // โหมดเตรียมจบงาน (หลังจากเสียงแจ้งเตือนดัง)
+    prepareToComplete();
+  }
 }
 
-async function checkAIAndComplete() {
-  alert("สแกน 'หนังสือ' อีกครั้งเพื่อยืนยันว่าทำเสร็จจริง");
-  const success = await scanForObject("book");
-  if (success) completeTask();
+function prepareToStart() {
+  if (isCameraRunning && detectedObject) {
+    // ถ้ากล้องเปิดอยู่และสแกนเจอวัตถุแล้ว
+    startTaskConfirmed();
+  } else {
+    // ถ้ากล้องยังไม่เปิด หรือยังไม่เจอวัตถุ
+    alert("กรุณาโชว์ 'หนังสือ' หรือ 'อุปกรณ์หลัก' หน้ากล้องเพื่อยืนยันก่อนเริ่ม");
+    if (!isCameraRunning) toggleCamera();
+  }
 }
 
-// --- โค้ดระบบ Task เดิมของคุณ (ปรับแต่งเล็กน้อย) ---
-
-function renderTasks() {
-  const list = document.getElementById("taskList");
-  list.innerHTML = "";
-  tasks.sort((a,b) => a.priority - b.priority);
-  tasks.forEach((task, index) => {
-    const li = document.createElement("li");
-    li.className = task.status === 'done' ? 'done' : '';
-    li.innerHTML = `<span><strong>${task.title}</strong> (${task.duration}m)</span>
-                    <button class="delete-btn" onclick="deleteTask(${index})">🗑️</button>`;
-    list.appendChild(li);
-  });
+function startTaskConfirmed() {
+  stopCamera();
+  const index = tasks.findIndex(t => t.status === "pending");
+  currentTaskIndex = index;
+  tasks[index].status = "doing";
+  
+  document.getElementById("currentTask").innerText = "🔥 ทำภารกิจ: " + tasks[index].title;
+  document.getElementById("mainBtn").innerText = "⏳ จบงานต้องสแกน";
+  
+  remainingTime = tasks[index].duration * 60;
+  clearInterval(countdownInterval);
+  countdownInterval = setInterval(updateTimerDisplay, 1000);
+  saveAndRender();
 }
 
+function updateTimerDisplay() {
+  if (remainingTime <= 0) {
+    clearInterval(countdownInterval);
+    document.getElementById("countdown").innerText = "Time's Up!";
+    alarmSound.play();
+    return;
+  }
+  remainingTime--;
+  let m = Math.floor(remainingTime / 60);
+  let s = remainingTime % 60;
+  document.getElementById("countdown").innerText = `${m}:${s.toString().padStart(2, '0')}`;
+}
+
+function prepareToComplete() {
+  if (isCameraRunning && detectedObject) {
+    // ถ้ากล้องเปิดอยู่และสแกนเจอวัตถุแล้ว
+    completeTaskConfirmed();
+  } else {
+    // ถ้ากล้องยังไม่เปิด หรือยังไม่เจอวัตถุ
+    alert("โชว์ 'หนังสือ' เพื่อยืนยันว่าทำงานจริงและหยุดเสียง");
+    if (!isCameraRunning) toggleCamera();
+  }
+}
+
+function completeTaskConfirmed() {
+  stopCamera();
+  alarmSound.pause();
+  alarmSound.currentTime = 0;
+  tasks[currentTaskIndex].status = "done";
+  
+  document.getElementById("countdown").innerText = "00:00";
+  document.getElementById("currentTask").innerText = "สำเร็จแล้ว!";
+  document.getElementById("mainBtn").innerText = "🚀 สแกนหนังสือเพื่อเริ่ม";
+  currentTaskIndex = null;
+  saveAndRender();
+}
+
+// 5. Task Management (เดิมของคุณ)
 function addTask() {
   const title = document.getElementById("taskInput").value;
   const duration = document.getElementById("durationInput").value;
   if (!title || duration <= 0) return;
-  tasks.push({ title, duration: parseInt(duration), priority: parseInt(document.getElementById("priorityInput").value), status: "pending" });
-  localStorage.setItem("tasks", JSON.stringify(tasks));
-  renderTasks();
+  tasks.push({ title, duration: parseInt(duration), priority: document.getElementById("priorityInput").value, status: "pending" });
+  saveAndRender();
+  document.getElementById("taskInput").value = "";
+  document.getElementById("durationInput").value = "";
 }
 
-function deleteTask(index) {
-  tasks.splice(index, 1);
-  localStorage.setItem("tasks", JSON.stringify(tasks));
-  renderTasks();
+function saveAndRender() {
+  localStorage.setItem("ai_focus_tasks", JSON.stringify(tasks));
+  const list = document.getElementById("taskList");
+  list.innerHTML = "";
+  tasks.sort((a,b) => a.priority - b.priority);
+  tasks.forEach((t, i) => {
+    const li = document.createElement("li");
+    li.className = `p-${t.priority} ${t.status === 'done' ? 'done' : ''}`;
+    li.innerHTML = `<span>${t.title} (${t.duration}m)</span>
+                    <button class="delete-btn" onclick="tasks.splice(${i},1); saveAndRender();">🗑️</button>`;
+    list.appendChild(li);
+  });
 }
 
-function startTask() {
-  const index = tasks.findIndex(t => t.status === "pending");
-  currentTaskIndex = index;
-  tasks[index].status = "doing";
-  document.getElementById("currentTask").innerText = "🔥 กำลังทำ: " + tasks[index].title;
-  document.getElementById("startBtn").disabled = true;
-  document.getElementById("completeBtn").disabled = false;
-  remainingTime = tasks[index].duration * 60;
-  
-  clearInterval(countdownInterval);
-  countdownInterval = setInterval(() => {
-    if
+saveAndRender();
+</script>
+</body>
+</html>
